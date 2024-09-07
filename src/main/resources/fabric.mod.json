@@ -15,7 +15,7 @@
 	"icon": "assets/clans-fabric/icon.png",
 	"environment": "server",
 	"entrypoints": {
-		"main": [
+		"server": [
 			"ru.whbex.develop.clans.fabric.MainFabric"
 		]
 	},

@@ -1,5 +1,6 @@
 package ru.whbex.develop.clans.fabric;
 
+import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.api.ModInitializer;
@@ -39,8 +40,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 /* Main class for Clans port on Fabric */
-@Environment(EnvType.SERVER)
-public class MainFabric implements ModInitializer, ClansPlugin {
+
+public class MainFabric implements DedicatedServerModInitializer, ClansPlugin {
 	public static final String MOD_ID = "clans-fabric";
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 	private ConsoleActor consoleActor;
@@ -54,7 +55,7 @@ public class MainFabric implements ModInitializer, ClansPlugin {
 
 
 	@Override
-	public void onInitialize() {
+	public void onInitializeServer() {
 		Context.INSTANCE.logger = LOGGER;
 		Context.INSTANCE.plugin = this;
 		this.consoleActor = new ConsoleActorFabric();
