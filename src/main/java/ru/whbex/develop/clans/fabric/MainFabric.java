@@ -37,6 +37,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.Callable;
@@ -97,9 +99,16 @@ public class MainFabric implements DedicatedServerModInitializer, ClansPlugin {
 		/* Config init */
 		this.configWrapper = new ConfigWrapperFabric();
 		File f = new File(workdir, "messages.lang"); // TODO: new name
-		// TODO: Use assets for this
-	//	LangFile lf = new LangFile(new File(workdir, "messages.lang"));
-	//	lang = new Language(lf);
+
+        try {
+            unpackLocales();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        // TODO: Use assets for this
+		LangFile lf = new LangFile(new File(workdir, "messages.lang"));
+		lang = new Language(lf);
 
 
 		ClansPlugin.log(Level.INFO, "Starting database executor thread");
@@ -149,6 +158,24 @@ public class MainFabric implements DedicatedServerModInitializer, ClansPlugin {
 
 	}
 
+	private void unpackLocales() throws IOException {
+		ClansPlugin.log(Level.INFO, "Unpacking locales...");
+		File l = new File(workdir, "messages.lang");
+		if(l.exists() && l.isFile()){
+			ClansPlugin.log(Level.INFO, "Already unpacked");
+			return;
+		}
+		InputStream is = Thread.currentThread().getContextClassLoader().getResourceAsStream("messages.lang");
+		if(is == null){
+			ClansPlugin.log(Level.ERROR, "Failed to unpack locales: not found in jar!!");
+			return;
+		}
+		l.createNewFile();
+		long bytes = Files.copy(is, l.toPath(), StandardCopyOption.REPLACE_EXISTING);
+		is.close();
+		ClansPlugin.log(Level.INFO, "Unpacked " + bytes + " bytes!");
+	}
+
 	@Override
 	public ConsoleActor getConsoleActor() {
 		return consoleActor;
@@ -181,32 +208,33 @@ public class MainFabric implements DedicatedServerModInitializer, ClansPlugin {
 
 	@Override
 	public Language getLanguage() {
-		return null;
+		return lang;
 	}
 
 	@Override
 	public SQLAdapter getSQLAdapter() {
-		return null;
+		return adapter;
 	}
 
 	@Override
 	public Task run(Runnable runnable) {
-		return null;
+		throw new UnsupportedOperationException("WIP on fabric");
 	}
 
 	@Override
 	public Task runLater(long l, Runnable runnable) {
-		return null;
+		throw new UnsupportedOperationException("WIP on fabric");
+
 	}
 
 	@Override
 	public Task runAsync(Runnable runnable) {
-		return null;
+		throw new UnsupportedOperationException("WIP on fabric");
 	}
 
 	@Override
 	public Task runAsyncLater(long l, Runnable runnable) {
-		return null;
+		throw new UnsupportedOperationException("WIP on fabric");
 	}
 
 	@Override
@@ -216,7 +244,7 @@ public class MainFabric implements DedicatedServerModInitializer, ClansPlugin {
 
 	@Override
 	public ExecutorService getDatabaseExecutor() {
-		return null;
+		return dbExecutor;
 	}
 
 	@Override
