@@ -33,6 +33,10 @@ dependencies {
 
 	shadow(implementation("ru.whbex:clans-common:0.1-SNAPSHOT"))
 	shadow(implementation("com.h2database:h2:2.2.224"))
+	shadow(implementation("ru.whbex.lib:wlib-string:0.2-SNAPSHOT"))
+	shadow(implementation("ru.whbex.lib:wlib-log:0.2-SNAPSHOT"))
+	shadow(implementation("ru.whbex.lib:wlib-sql:0.2-SNAPSHOT"))
+	shadow(implementation("ru.whbex.lib:wlib-lang:0.2-SNAPSHOT"))
 }
 
 shadowJar {
