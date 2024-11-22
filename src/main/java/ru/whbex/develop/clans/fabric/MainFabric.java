@@ -1,204 +1,202 @@
 package ru.whbex.develop.clans.fabric;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import net.fabricmc.api.DedicatedServerModInitializer;
-import net.fabricmc.api.EnvType;
-import net.fabricmc.api.Environment;
-import net.fabricmc.api.ModInitializer;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerLoginConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.MinecraftVersion;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.text.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
 import ru.whbex.develop.clans.common.ClansPlugin;
+import ru.whbex.develop.clans.common.Constants;
 import ru.whbex.develop.clans.common.clan.ClanManager;
-import ru.whbex.develop.clans.common.clan.loader.Bridge;
-import ru.whbex.develop.clans.common.clan.loader.NullBridge;
-import ru.whbex.develop.clans.common.clan.loader.SQLBridge;
-import ru.whbex.develop.clans.common.db.H2SQLAdapter;
-import ru.whbex.develop.clans.common.db.SQLAdapter;
-import ru.whbex.develop.clans.common.db.SQLiteAdapter;
-import ru.whbex.develop.clans.common.lang.LangFile;
-import ru.whbex.develop.clans.common.lang.Language;
+
+import ru.whbex.develop.clans.common.conf.Config;
 import ru.whbex.develop.clans.common.player.PlayerActor;
-import ru.whbex.develop.clans.common.wrap.ConfigWrapper;
-import ru.whbex.develop.clans.common.wrap.ConsoleActor;
-import ru.whbex.develop.clans.common.wrap.Task;
+import ru.whbex.develop.clans.common.player.PlayerManager;
+import ru.whbex.develop.clans.common.task.DatabaseService;
+import ru.whbex.develop.clans.common.task.TaskScheduler;
+import ru.whbex.develop.clans.fabric.task.TaskSchedulerFabric;
 import ru.whbex.develop.clans.fabric.wrap.ConfigWrapperFabric;
 import ru.whbex.develop.clans.fabric.wrap.ConsoleActorFabric;
-import ru.whbex.develop.clans.fabric.wrap.PlayerActorFabric;
+import ru.whbex.lib.lang.Language;
+import ru.whbex.lib.lang.LanguageFile;
+import ru.whbex.lib.log.LogContext;
+import ru.whbex.lib.log.Debug;
+import ru.whbex.lib.sql.conn.ConnectionConfig;
+import ru.whbex.lib.sql.conn.ConnectionProvider;
 
-import javax.swing.*;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
+import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.*;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 
 /* Main class for Clans port on Fabric */
 
 public class MainFabric implements DedicatedServerModInitializer, ClansPlugin {
 	public static final String MOD_ID = "clans-fabric";
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
-	private ConsoleActor consoleActor;
-	private ConfigWrapper configWrapper;
 	private File workdir;
+	private Config config;
 
+	private TaskScheduler taskScheduler;
 	private ClanManager clanManager;
-	private SQLAdapter adapter;
+	private PlayerManager playerManager;
 
 	private MinecraftServer server;
 	private Language lang;
-	private final Map<UUID, PlayerActor> actors = new HashMap<>();
-	private final Map<String, PlayerActor> actorsByName = new HashMap<>();
-
-
-	private ExecutorService dbExecutor;
-
-
 
 	@Override
 	public void onInitializeServer() {
 
 		/* Context init */
-		Context.INSTANCE.logger = LOGGER;
+		LogContext.provideLogger(LOGGER);
 		Context.INSTANCE.plugin = this;
-		this.consoleActor = new ConsoleActorFabric();
+		Debug.print("hello");
 
 		/* Server lifecycle callbacks */
 		ServerLifecycleEvents.SERVER_STARTING.register((server1 -> {
+			// Will continue startup on server starting
 			this.server = server1;
             try {
-                this.onPostInitialize();
+                this.onPostInit();
             } catch (IOException | ClassNotFoundException | SQLException e) {
-				ClansPlugin.log(Level.INFO, "Plugin init failed !!!");
+				// TODO: Do not crash the game if post-init failed
+				LogContext.log(Level.ERROR, "Mod startup failed. Bailing out");
                 throw new RuntimeException(e);
             }
         }));
 		ServerLifecycleEvents.SERVER_STOPPING.register(server1 -> this.onShutdown());
-		ClansPlugin.log(Level.INFO, "Registered server lifecycle callbacks, continuing init");
+		LogContext.log(Level.INFO, "Registered server lifecycle callbacks, continuing init");
 
 		/* Startup */
-		ClansPlugin.dbg("hello");
-		ClansPlugin.log(Level.INFO, "=== Clans ===");
-		ClansPlugin.log(Level.INFO, "Running on Fabric (Minecraft " + MinecraftVersion.CURRENT.getName() + ")");
-		ClansPlugin.dbg("Config dir: " + FabricLoader.getInstance().getConfigDir().toString());
-		workdir = FabricLoader.getInstance().getConfigDir().toFile();
-
-		/* Config init */
-		this.configWrapper = new ConfigWrapperFabric();
-		File f = new File(workdir, "messages.lang"); // TODO: new name
-
+		LogContext.log(Level.INFO, "=== Clans ===");
+		LogContext.log(Level.INFO, "Running on Fabric (Minecraft " + MinecraftVersion.CURRENT.getName() + ")");
+		// TODO: Properly handle early init exceptions
         try {
-            unpackLocales();
-        } catch (IOException e) {
+            onEarlyInit();
+        } catch (IOException | SQLException | InvocationTargetException | NoSuchMethodException |
+                 InstantiationException | IllegalAccessException e) {
+			LogContext.log(Level.ERROR, "Failed to initialize. Bailing out");
             throw new RuntimeException(e);
         }
-
-        // TODO: Use assets for this
-		LangFile lf = new LangFile(new File(workdir, "messages.lang"));
-		lang = new Language(lf);
-
-
-		ClansPlugin.log(Level.INFO, "Starting database executor thread");
-		dbExecutor = Executors.newSingleThreadExecutor();
-
-
-		ClansPlugin.log(Level.INFO, "=== Early init completed! ===");
     }
+	// Those init tasks don't require MinecraftServer instance
+	private void onEarlyInit() throws IOException, SQLException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+		LogContext.log(Level.INFO, "Doing early init!");
+		this.taskScheduler = new TaskSchedulerFabric();
+		this.configInit();
+		this.localeInit();
+		this.databaseInit();
 
-	private void onPostInitialize() throws IOException, ClassNotFoundException, SQLException {
-		ClansPlugin.log(Level.INFO, "=== Starting up ===");
+		LogContext.log(Level.INFO, "=== Early init complete! ===");
 
-		adapter = new H2SQLAdapter(new File(workdir, MOD_ID + "_database.h2"));
-		adapter.connect();
+	}
 
-		// initial db update
-		// TOOD: move to ClansPlugin
-		adapter.update("CREATE TABLE IF NOT EXISTS clans (id varchar(36), tag varchar(16), " +
-					"name varchar(24), " +
-					"description varchar(255), " +
-					"creationEpoch LONG, " + // TODO: fixxx
-					"leader varchar(36), " +
-					"deleted TINYINT, " +
-					"level INT, " +
-					"exp INT);");
-
-		Bridge b = adapter == null ? new NullBridge() : new SQLBridge(adapter);
-		clanManager = new ClanManager(configWrapper, b);
-
-		ClansPlugin.log(Level.INFO, "Registering event callbacks");
-		ServerPlayConnectionEvents.JOIN.register(((handler, sender, server) -> {
-			ClansPlugin.dbg("ok");
-
-		}));
-		ServerPlayConnectionEvents.DISCONNECT.register(((handler, server) -> {
-			actors.remove(handler.getPlayer().getUuid());
-		}));
-
-		ClansPlugin.log(Level.INFO, "=== Startup completed! ===");
+	private void onPostInit() throws IOException, ClassNotFoundException, SQLException {
+		LogContext.log(Level.INFO, "=== Starting up ===");
+		LogContext.log(Level.INFO, "=== Startup complete! ===");
 
 	}
 	private void onShutdown(){
-		ClansPlugin.log(Level.INFO, "=== Shutting down ===");
-		// shutdown tasks going here
-
-		ClansPlugin.log(Level.INFO, "Complete, goodbye!");
+		LogContext.log(Level.INFO, "=== Shutting down ===");
+		// shutdown tasks go here
+		DatabaseService.destroyService();
+		LogContext.log(Level.INFO, "Complete, goodbye!");
 
 	}
-
-	private void unpackLocales() throws IOException {
-		ClansPlugin.log(Level.INFO, "Unpacking locales...");
+	private void configInit() throws IOException {
+		LogContext.log(Level.INFO, "Initializing configuration...");
+		workdir = new File(FabricLoader.getInstance().getConfigDir().toFile(), MOD_ID);
+		if(!workdir.isDirectory())
+			if(!workdir.mkdir())
+				throw new IllegalStateException("Work directory create returned false!");
+		Debug.print("Working directory: " + workdir.getAbsolutePath());
+		loadConfig();
+	}
+	private void loadConfig() throws IOException {
+		File configFile = new File(workdir, "config.json");
+		Gson gson = new GsonBuilder()
+				.setPrettyPrinting()
+				.create();
+		// Save default config
+		if(!configFile.exists() || !configFile.isFile()){
+			LogContext.log(Level.INFO, "Config file not found, creating default");
+			if(!configFile.createNewFile())
+				throw new IllegalStateException("Config file create returned false!");
+			Writer fw = new FileWriter(configFile);
+			gson.toJson(new ConfigWrapperFabric(), fw);
+			fw.close();
+		}
+		// Init config from json
+		Reader fr = new FileReader(configFile);
+		this.config = gson.fromJson(fr, ConfigWrapperFabric.class);
+		fr.close();
+	}
+	private void localeInit() throws IOException {
+		LogContext.log(Level.INFO, "Unpacking locales...");
 		File l = new File(workdir, "messages.lang");
 		if(l.exists() && l.isFile()){
-			ClansPlugin.log(Level.INFO, "Already unpacked");
-			return;
+			LogContext.log(Level.INFO, "Locales are already unpacked");
+		} else {
+			InputStream is = Thread.currentThread().getContextClassLoader().getResourceAsStream("messages.lang");
+			if(is == null)
+				throw new IllegalStateException("Failed to unpack locales, not found in jar!");
+			if(!l.createNewFile())
+				throw new IllegalStateException("Failed to create locale file!");
+			long bytes = Files.copy(is, l.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			is.close();
+			LogContext.log(Level.INFO, "Unpacked " + bytes + " bytes!");
 		}
-		InputStream is = Thread.currentThread().getContextClassLoader().getResourceAsStream("messages.lang");
-		if(is == null){
-			ClansPlugin.log(Level.ERROR, "Failed to unpack locales: not found in jar!!");
-			return;
-		}
-		l.createNewFile();
-		long bytes = Files.copy(is, l.toPath(), StandardCopyOption.REPLACE_EXISTING);
-		is.close();
-		ClansPlugin.log(Level.INFO, "Unpacked " + bytes + " bytes!");
+		LanguageFile lf = new LanguageFile(new File(workdir, Constants.LANGUAGE_FILE_NAME));
+		lang = new Language(lf);
+	}
+	private void databaseInit() throws NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException, SQLException {
+		LogContext.log(Level.INFO, "Initializing database...");
+		LogContext.log(Level.INFO, "Using database backend {0}", config.getDatabaseBackend());
+		ConnectionConfig conf = new ConnectionConfig(
+				config.getDatabaseName(),
+				config.getDatabaseBackend().isFile() ? workdir.getAbsolutePath() : config.getDatabaseAddress(),
+				config.getDatabaseUser(),
+				config.getDatabasePassword()
+		);
+		ConnectionProvider prov = config.getDatabaseBackend().provider().getConstructor(ConnectionConfig.class).newInstance(conf);
+		prov.newConnection();
+		DatabaseService.initializeService(prov);
+		if(!DatabaseService.isInitialized())
+			throw new IllegalStateException("Failed to initialize database service!");
+	}
+	public MinecraftServer getMinecraftServer(){
+		return server;
 	}
 
 	@Override
-	public ConsoleActor getConsoleActor() {
-		return consoleActor;
+	public String _getName() {
+		return MOD_ID;
 	}
 
 	@Override
-	public PlayerActor getPlayerActor(UUID uuid) {
-		return actors.get(uuid);
+	public String _getDescription() {
+		return "Clans plugin"; // TODO: get description from assets
 	}
 
 	@Override
-	public PlayerActor getPlayerActor(String s) {
-		return actorsByName.get(s);
+	public String _getVersionString() {
+		return "0.1"; // TODO: get version from assets
 	}
 
 	@Override
-	public PlayerActor getPlayerActorOrRegister(UUID uuid) {
-		return null;
-	}
-
-	@Override
-	public Collection<PlayerActor> getOnlineActors() {
-		return actors.values();
+	public PlayerManager getPlayerManager() {
+		return playerManager;
 	}
 
 	@Override
@@ -207,58 +205,28 @@ public class MainFabric implements DedicatedServerModInitializer, ClansPlugin {
 	}
 
 	@Override
+	public TaskScheduler getTaskScheduler() {
+		return taskScheduler;
+	}
+
+	@Override
 	public Language getLanguage() {
 		return lang;
 	}
 
 	@Override
-	public SQLAdapter getSQLAdapter() {
-		return adapter;
-	}
-
-	@Override
-	public Task run(Runnable runnable) {
-		throw new UnsupportedOperationException("WIP on fabric");
-	}
-
-	@Override
-	public Task runLater(long l, Runnable runnable) {
-		throw new UnsupportedOperationException("WIP on fabric");
-
-	}
-
-	@Override
-	public Task runAsync(Runnable runnable) {
-		throw new UnsupportedOperationException("WIP on fabric");
-	}
-
-	@Override
-	public Task runAsyncLater(long l, Runnable runnable) {
-		throw new UnsupportedOperationException("WIP on fabric");
-	}
-
-	@Override
-	public <T> Future<T> runCallable(Callable<T> callable) {
-		return dbExecutor.submit(callable);
-	}
-
-	@Override
-	public ExecutorService getDatabaseExecutor() {
-		return dbExecutor;
-	}
-
-	@Override
-	public void reloadLocales() throws Exception {
-
+	public void reloadLangFiles() throws Exception {
+		// TODO: Implement
+		throw new UnsupportedOperationException("WIP on Fabric");
 	}
 
 	@Override
 	public void reloadConfigs() throws Exception {
-
+		this.loadConfig();
 	}
 
 	@Override
-	public ConfigWrapper getConfigWrapped() {
-		return configWrapper;
+	public Config getConfigWrapped() {
+		return config;
 	}
 }

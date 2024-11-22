@@ -3,18 +3,24 @@ package ru.whbex.develop.clans.fabric.wrap;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import ru.whbex.develop.clans.common.ClansPlugin;
-import ru.whbex.develop.clans.common.lang.Language;
+import ru.whbex.develop.clans.common.clan.Clan;
 import ru.whbex.develop.clans.common.misc.requests.Request;
 import ru.whbex.develop.clans.common.player.PlayerActor;
+import ru.whbex.develop.clans.common.player.PlayerProfile;
+import ru.whbex.develop.clans.fabric.MainFabric;
+import ru.whbex.lib.lang.Language;
 
 import java.util.UUID;
 
 public class PlayerActorFabric implements PlayerActor {
     private ServerPlayerEntity player;
+    private UUID id;
 
     public PlayerActorFabric(ServerPlayerEntity player){
         this.player = player;
     }
+
+
     @Override
     public void sendMessage(String s) {
         this.player.sendMessage(Text.of(s));
@@ -43,6 +49,26 @@ public class PlayerActorFabric implements PlayerActor {
     @Override
     public Language getLanguage() {
         return ClansPlugin.Context.INSTANCE.plugin.getLanguage();
+    }
+
+    @Override
+    public PlayerProfile getProfile() {
+        return null;
+    }
+
+    @Override
+    public void setProfile(PlayerProfile playerProfile) {
+
+    }
+
+    @Override
+    public Clan getClan() {
+        return null;
+    }
+
+    @Override
+    public boolean hasClan() {
+        return false;
     }
 
     // TODO: Implement requests
@@ -75,6 +101,31 @@ public class PlayerActorFabric implements PlayerActor {
     @Override
     public Request getRequest(PlayerActor playerActor) {
         return null;
+    }
+
+    @Override
+    public void setData(String s, Object o) {
+
+    }
+
+    @Override
+    public Object getData(String s) {
+        return null;
+    }
+
+    @Override
+    public boolean hasData(String s) {
+        return false;
+    }
+
+    @Override
+    public void removeData(String s) {
+
+    }
+
+    @Override
+    public void removeDataAll() {
+
     }
 
     public PlayerActorFabric updateEntity(ServerPlayerEntity spe){
