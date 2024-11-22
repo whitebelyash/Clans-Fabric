@@ -64,17 +64,20 @@ public class MainFabric implements DedicatedServerModInitializer, ClansPlugin {
 		Debug.print("hello");
 
 		/* Server lifecycle callbacks */
-		ServerLifecycleEvents.SERVER_STARTING.register((server1 -> {
+		ServerLifecycleEvents.SERVER_STARTING.register((serv -> {
+			// Init server instance object
+			this.server = serv;
+        }));
+		ServerLifecycleEvents.SERVER_STARTED.register(serv -> {
 			// Will continue startup on server starting
-			this.server = server1;
-            try {
-                this.onPostInit();
-            } catch (IOException | ClassNotFoundException | SQLException e) {
+			try {
+				this.onPostInit();
+			} catch (IOException | ClassNotFoundException | SQLException e) {
 				// TODO: Do not crash the game if post-init failed
 				LogContext.log(Level.ERROR, "Mod startup failed. Bailing out");
-                throw new RuntimeException(e);
-            }
-        }));
+				throw new RuntimeException(e);
+			}
+		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server1 -> this.onShutdown());
 		LogContext.log(Level.INFO, "Registered server lifecycle callbacks, continuing init");
 
