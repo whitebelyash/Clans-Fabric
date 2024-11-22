@@ -31,7 +31,7 @@ dependencies {
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
-	shadow(implementation("ru.whbex:clans-common:0.1-SNAPSHOT"))
+	shadow(implementation("ru.whbex:clans-common:0.1"))
 	shadow(implementation("com.h2database:h2:2.2.224"))
 	shadow(implementation("ru.whbex.lib:wlib-string:0.2-SNAPSHOT"))
 	shadow(implementation("ru.whbex.lib:wlib-log:0.2-SNAPSHOT"))
@@ -43,10 +43,13 @@ shadowJar {
 	configurations = [project.configurations.shadow];
 	archiveClassifier.set("all")
 	relocate 'org.h2', 'org.shaded.h2'
+	relocate 'ru.whbex.lib', 'ru.whbex.develop.clans.lib'
+	dependsOn(jar)
 }
 remapJar {
-	dependsOn(shadowJar)
 	inputFile = tasks.shadowJar.archiveFile
+	archiveClassifier.set("full-remapped")
+	dependsOn(shadowJar)
 }
 
 processResources {
